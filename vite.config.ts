@@ -26,5 +26,16 @@ export default defineConfig(({mode}) => {
         },
       },
     },
+    build: {
+      chunkSizeWarningLimit: 1500,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom', 'firebase/app', 'firebase/auth', 'firebase/firestore'],
+            maps: ['react-leaflet', 'leaflet']
+          }
+        }
+      }
+    },
   };
 });
