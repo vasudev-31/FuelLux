@@ -31,7 +31,7 @@ export default defineConfig(({mode}) => {
       rollupOptions: {
         output: {
           manualChunks: {
-            vendor: ['react', 'react-dom', 'firebase/app', 'firebase/auth', 'firebase/firestore'],
+            vendor: ['react', 'react-dom'],
             maps: ['react-leaflet', 'leaflet']
           }
         }

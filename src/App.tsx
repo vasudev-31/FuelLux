@@ -2,26 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { db, auth } from './firebase';
-import { 
-  collection,
-  orderBy, 
-  onSnapshot, 
-  doc, 
-  updateDoc, 
-  addDoc, 
-  query, 
-  getDocFromServer,
-  Timestamp,
-  serverTimestamp
-} from 'firebase/firestore';
-import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  onAuthStateChanged, 
-  signOut,
-  User as FirebaseUser
-} from 'firebase/auth';
 
 // Fix Leaflet marker icons for Vite
 // @ts-ignore
@@ -99,57 +79,6 @@ import {
 import { cn } from './lib/utils';
 
 // --- Types ---
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  // In a real app, we might show a toast here.
-}
-
 type VehicleType = 'Bike' | 'Car' | 'Auto' | 'Bus' | 'Truck' | 'Custom';
 type FuelType = 'Petrol' | 'Diesel';
 type StockStatus = 'Normal' | 'Low' | 'Critical';
@@ -312,86 +241,51 @@ const Card = ({ children, className, ...props }: { children: React.ReactNode; cl
 export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAdminMode, setIsAdminMode] = useState(false);
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [user, setUser] = useState<any | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [stock, setStock] = useState<StockData[]>(INITIAL_STOCK);
   const [emergencyRequests, setEmergencyRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Test connection to Firestore
   useEffect(() => {
-    async function testConnection() {
+    const fetchStock = async () => {
       try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
+        const res = await fetch('/api/stock');
+        if (res.ok) {
+          const data = await res.json();
+          setStock(data);
+        }
+        setIsLoading(false);
       } catch (error) {
-        if(error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration. ");
-        }
+        console.error("Error fetching stock", error);
+        setIsLoading(false);
       }
-    }
-    testConnection();
+    };
+    fetchStock();
+    const interval = setInterval(fetchStock, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user && user.email !== "preciousbobby00@gmail.com") {
-        await auth.signOut();
-        setUser(null);
-        setIsAdminMode(false);
-      } else {
-        setUser(user);
-        if (!user) {
-          setIsAdminMode(false);
+    if (!isAdminMode) return;
+    const fetchRequests = async () => {
+      try {
+        const res = await fetch('/api/requests');
+        if (res.ok) {
+          const data = await res.json();
+          setEmergencyRequests(data);
         }
+      } catch (error) {
+        console.error("Error fetching requests", error);
       }
-      setIsAuthReady(true);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!isAuthReady) return;
-
-    const path = 'stock';
-    const unsubscribe = onSnapshot(collection(db, path), (snapshot) => {
-      const stockData = snapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id
-      })) as any[];
-      
-      if (stockData.length > 0) {
-        setStock(stockData as StockData[]);
-      }
-      setIsLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
-      setIsLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [isAuthReady]);
-
-  useEffect(() => {
-    if (!isAuthReady || !isAdminMode) return;
-
-    const path = 'emergencyRequests';
-    const q = query(collection(db, path), orderBy('timestamp', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const requests = snapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id
-      }));
-      setEmergencyRequests(requests);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
-    });
-
-    return () => unsubscribe();
-  }, [isAuthReady, isAdminMode]);
+    };
+    fetchRequests();
+    const interval = setInterval(fetchRequests, 5000);
+    return () => clearInterval(interval);
+  }, [isAdminMode]);
   
   // Calculator State
   const [calcVehicle, setCalcVehicle] = useState<VehicleType>('Car');
@@ -443,27 +337,25 @@ export default function App() {
 
   const updateStockBackend = async (type: FuelType, available?: number, price?: number) => {
     try {
-      const stockDoc = doc(db, 'stock', type.toLowerCase());
-      const updateData: any = {};
-      if (available !== undefined) updateData.available = available;
-      if (price !== undefined) updateData.price = price;
-      updateData.lastUpdated = serverTimestamp();
-      
-      await updateDoc(stockDoc, updateData);
+      await fetch('/api/stock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, available, price })
+      });
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `stock/${type.toLowerCase()}`);
+      console.error("Error updating stock", error);
     }
   };
 
   const updateRequestStatus = async (id: string, status: string) => {
     try {
-      const requestDoc = doc(db, 'emergencyRequests', id);
-      await updateDoc(requestDoc, {
-        status,
-        updatedAt: serverTimestamp()
+      await fetch(`/api/requests/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
       });
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `emergencyRequests/${id}`);
+      console.error("Error updating request", error);
     }
   };
 
@@ -472,20 +364,14 @@ export default function App() {
   const handleLogin = async (e: React.MouseEvent | React.FormEvent) => {
     if (e) e.preventDefault();
     setLoginError('');
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      
-      if (result.user.email === 'preciousbobby00@gmail.com') {
-        setIsAdminMode(true);
-        setShowLoginModal(false);
-      } else {
-        await auth.signOut();
-        setLoginError("Access denied. You are not authorized as an administrator.");
-      }
-    } catch (error: any) {
-      console.error("Login failed:", error);
-      setLoginError(error.message || "Login failed. Please try again.");
+    
+    if (adminPassword === "admin123") {
+      setIsAdminMode(true);
+      setUser({ email: 'preciousbobby00@gmail.com' } as any);
+      setShowLoginModal(false);
+      setAdminPassword('');
+    } else {
+      setLoginError("Access denied. Incorrect password.");
     }
   };
 
@@ -498,12 +384,8 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    try {
-      await auth.signOut();
-      setIsAdminMode(false);
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
+    setUser(null);
+    setIsAdminMode(false);
   };
 
   const handleNavigate = (req: any) => {
@@ -1012,20 +894,22 @@ export default function App() {
               <form className="space-y-4" onSubmit={async (e) => {
                 e.preventDefault();
                 try {
-                  await addDoc(collection(db, 'emergencyRequests'), {
-                    name: emergencyForm.name,
-                    phone: emergencyForm.mobile,
-                    location: emergencyForm.location,
-                    fuelType: emergencyForm.fuelType,
-                    quantity: emergencyForm.quantity,
-                    status: 'Pending',
-                    timestamp: serverTimestamp(),
-                    coords: mapPosition
+                  await fetch('/api/requests', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      name: emergencyForm.name,
+                      phone: emergencyForm.mobile,
+                      location: emergencyForm.location,
+                      fuelType: emergencyForm.fuelType,
+                      quantity: emergencyForm.quantity,
+                      coords: mapPosition
+                    })
                   });
                   alert("Emergency request submitted successfully! Our team will contact you shortly.");
                   setEmergencyForm({ ...emergencyForm, name: '', mobile: '', location: '' });
                 } catch (error) {
-                  handleFirestoreError(error, OperationType.CREATE, 'emergencyRequests');
+                  console.error("Error submitting request", error);
                   alert("Failed to submit request. Please try again or call us directly.");
                 }
               }}>
@@ -1779,17 +1663,22 @@ export default function App() {
                 </div>
 
                 <div className="space-y-4">
+                  <input
+                    type="password"
+                    placeholder="Enter Admin Password (admin123)"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleLogin(e);
+                    }}
+                  />
                   <button 
                     onClick={handleLogin}
-                    className="w-full py-4 bg-white border border-slate-200 dark:border-slate-700 dark:bg-slate-700 dark:text-white text-slate-900 rounded-xl font-bold shadow-sm flex items-center justify-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-600 transition-all"
+                    className="w-full py-4 bg-amber-500 text-white rounded-xl font-bold shadow-sm flex items-center justify-center gap-3 hover:bg-amber-600 transition-all"
                   >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24">
-                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                    </svg>
-                    Sign in with Google
+                    <ShieldCheck className="w-5 h-5" />
+                    Secure Admin Login
                   </button>
 
                   {loginError && (
