@@ -1,0 +1,5 @@
+{
+  "name": "FuelLux - Premium Bunk Management",
+  "description": "A sophisticated, tech-enabled management system for premium petrol and diesel stations, featuring live stock monitoring, fuel calculators, and emergency assistance.",
+  "requestFramePermissions": ["geolocation"]
+}

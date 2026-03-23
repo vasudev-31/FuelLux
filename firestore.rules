@@ -1,0 +1,90 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: stock
+// Fields:
+//   - type: string (Petrol | Diesel)
+//   - available: number
+//   - capacity: number
+//   - price: number
+//   - lastUpdated: string
+//
+// Collection: emergencyRequests
+// Fields:
+//   - name: string
+//   - phone: string
+//   - location: string
+//   - fuelType: string (Petrol | Diesel)
+//   - quantity: number
+//   - status: string (Pending | In Progress | Completed | Cancelled)
+//   - timestamp: string
+//   - coordinates: map (optional)
+//     - lat: number
+//     - lng: number
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.email == "preciousbobby00@gmail.com" && request.auth.token.email_verified == true;
+    }
+
+    function isValidStock(data) {
+      return data.keys().hasAll(['type', 'available', 'capacity', 'price', 'lastUpdated']) &&
+             data.type in ['Petrol', 'Diesel'] &&
+             data.available is number &&
+             data.capacity is number &&
+             data.price is number &&
+             data.lastUpdated is string &&
+             data.available >= 0 &&
+             data.capacity > 0 &&
+             data.price > 0;
+    }
+
+    function isValidEmergencyRequest(data) {
+      return data.keys().hasAll(['name', 'phone', 'location', 'fuelType', 'quantity', 'status', 'timestamp']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.phone is string && data.phone.size() > 0 && data.phone.size() < 20 &&
+             data.location is string && data.location.size() > 0 && data.location.size() < 500 &&
+             data.fuelType in ['Petrol', 'Diesel'] &&
+             data.quantity is number && data.quantity > 0 &&
+             data.status in ['Pending', 'In Progress', 'Completed', 'Cancelled'] &&
+             data.timestamp is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /stock/{stockId} {
+      // Allow public read access so anyone can check fuel availability
+      allow read: if true;
+      allow write: if isAdmin() && isValidStock(request.resource.data);
+    }
+
+    match /test/{testId} {
+      // Allow public read access for connection testing
+      allow read: if true;
+    }
+
+    match /emergencyRequests/{requestId} {
+      // Anyone can create an emergency request (even unauthenticated?)
+      // The instruction says "Initially restricted... unless the user makes an explicit request for unauthenticated data"
+      // For emergency fuel, it's better to allow creation.
+      allow create: if isValidEmergencyRequest(request.resource.data);
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}

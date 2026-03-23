@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "Stock": {
+      "title": "Stock",
+      "description": "Fuel stock information",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["Petrol", "Diesel"] },
+        "available": { "type": "number" },
+        "capacity": { "type": "number" },
+        "price": { "type": "number" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["type", "available", "capacity", "price", "lastUpdated"]
+    },
+    "EmergencyRequest": {
+      "title": "EmergencyRequest",
+      "description": "Emergency fuel delivery request",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "location": { "type": "string" },
+        "fuelType": { "type": "string", "enum": ["Petrol", "Diesel"] },
+        "quantity": { "type": "number" },
+        "status": { "type": "string", "enum": ["Pending", "In Progress", "Completed", "Cancelled"] },
+        "timestamp": { "type": "string" },
+        "coordinates": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        }
+      },
+      "required": ["name", "phone", "location", "fuelType", "quantity", "status", "timestamp"]
+    }
+  },
+  "firestore": {
+    "stock": {
+      "schema": "Stock",
+      "description": "Collection of fuel stocks"
+    },
+    "emergencyRequests": {
+      "schema": "EmergencyRequest",
+      "description": "Collection of emergency fuel requests"
+    }
+  }
+}
